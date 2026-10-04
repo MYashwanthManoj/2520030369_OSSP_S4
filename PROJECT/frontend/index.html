@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive Linux memory management visualizer. Watch a real Linux process use malloc, calloc, realloc, and free — and understand every step.">
+    <title>Linux Dynamic Memory Allocation &amp; Monitoring</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ═══ HEADER ═══ -->
+    <header class="header">
+        <div class="header-left">
+            <div>
+                <div class="header-title">LINUX DYNAMIC MEMORY ALLOCATION &amp; MONITORING</div>
+                <div class="header-subtitle">Watch a real Linux process use memory — and understand every step.</div>
+            </div>
+            <div id="process-indicator" class="process-indicator stopped">
+                <span class="dot"></span>NOT RUNNING
+            </div>
+        </div>
+        <div id="connection-status" class="connection-status disconnected">
+            <span class="dot"></span>Disconnected
+        </div>
+    </header>
+
+    <!-- ═══ CONTROLS BAR ═══ -->
+    <div class="controls-bar">
+        <div class="controls-group">
+            <button id="btn-start" class="success" onclick="app.startProcess()">START PROCESS</button>
+            <button id="btn-stop" class="danger" onclick="app.stopProcess()" disabled>STOP PROCESS</button>
+            <button id="btn-reset" onclick="app.resetProcess()">RESET</button>
+        </div>
+
+        <div class="controls-separator"></div>
+
+        <div class="controls-group">
+            <button id="btn-guided" onclick="app.startGuided()">GUIDED EXPLANATION</button>
+            <button id="btn-audio" onclick="app.toggleAudio()">AUDIO</button>
+            <button id="btn-video" onclick="app.toggleVideo()">VIDEO</button>
+            <button id="btn-audio-video" onclick="app.startAudioVideo()">AUDIO + VIDEO</button>
+        </div>
+
+        <div class="controls-separator"></div>
+
+        <div class="controls-group">
+            <button onclick="app.togglePanel('error-lab-content')">MEMORY PROBLEM LAB</button>
+            <button onclick="app.togglePanel('valgrind-panel-content'); app.runValgrind()">RUN VALGRIND</button>
+            <button onclick="app.toggleChat()">ASK OFFLINE ASSISTANT</button>
+        </div>
+    </div>
+
+    <!-- ═══ AUDIO / CAPTION BAR ═══ -->
+    <div id="audio-bar" class="audio-bar">
+        <span class="audio-label">LIVE TRANSCRIPT</span>
+        <span id="caption-text" class="caption-text">Waiting for events...</span>
+        <button onclick="app.pauseAudio()">PAUSE</button>
+        <button onclick="app.resumeAudio()">RESUME</button>
+        <button onclick="app.stopAudio()">STOP AUDIO</button>
+    </div>
+
+    <!-- ═══ MAIN WORKSPACE ═══ -->
+    <div class="workspace">
+
+        <!-- LEFT: Process Info -->
+        <div class="process-info" id="process-info">
+            <div id="process-info-content">
+                <div class="not-running-message">
+                    <div class="title">PROCESS NOT RUNNING</div>
+                    <div class="subtitle">Click START PROCESS to begin the memory demonstration.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER: Memory Visualization -->
+        <div class="memory-visualization" id="memory-map">
+
+            <!-- Process memory map -->
+            <div class="memory-map">
+                <div class="memory-segment">
+                    <div class="segment-header">
+                        <span class="segment-name">TEXT</span>
+                        <span class="segment-desc">Program instructions</span>
+                    </div>
+                </div>
+                <div class="memory-segment">
+                    <div class="segment-header">
+                        <span class="segment-name">DATA</span>
+                        <span class="segment-desc">Global variables</span>
+                    </div>
+                </div>
+                <div class="memory-segment heap" id="heap-section">
+                    <div class="segment-header">
+                        <span class="segment-name">HEAP</span>
+                        <span class="segment-desc">Dynamic allocations (malloc/calloc/realloc/free)</span>
+                    </div>
+                    <div id="heap-blocks" class="heap-blocks">
+                        <div class="heap-empty">No allocations yet</div>
+                    </div>
+                </div>
+                <div class="memory-segment">
+                    <div class="segment-header">
+                        <span class="segment-name">STACK</span>
+                        <span class="segment-desc">Function call frames</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manual memory controls -->
+            <div class="manual-controls">
+                <h3>Manual Memory Operations</h3>
+
+                <div class="control-row">
+                    <label>malloc</label>
+                    <input type="number" id="malloc-size" value="1024" min="1" placeholder="bytes">
+                    <button class="requires-engine" onclick="app.doMalloc()" disabled>ALLOCATE</button>
+                </div>
+
+                <div class="control-row">
+                    <label>calloc</label>
+                    <input type="number" id="calloc-count" value="4" min="1" placeholder="count" style="width:60px">
+                    <span style="color:var(--text-muted);font-size:0.75rem">×</span>
+                    <input type="number" id="calloc-size" value="256" min="1" placeholder="size" style="width:60px">
+                    <button class="requires-engine" onclick="app.doCalloc()" disabled>ALLOCATE</button>
+                </div>
+
+                <div class="control-row">
+                    <label>realloc</label>
+                    <select id="realloc-id" style="width:120px"><option value="">Select...</option></select>
+                    <input type="number" id="realloc-size" value="4096" min="0" placeholder="new size">
+                    <button class="requires-engine" onclick="app.doRealloc()" disabled>RESIZE</button>
+                </div>
+
+                <div class="control-row">
+                    <label>free</label>
+                    <select id="free-id" style="width:120px"><option value="">Select...</option></select>
+                    <button class="requires-engine" onclick="app.doFree()" disabled>RELEASE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Explanation Panel -->
+        <div class="explanation-panel">
+            <div class="explanation-title">What is happening now?</div>
+            <div id="explanation-content">
+                <div class="explanation-idle">Waiting for events...</div>
+            </div>
+        </div>
+
+        <!-- BOTTOM: Event Timeline -->
+        <div class="event-timeline">
+            <div class="timeline-title">EVENT TIMELINE</div>
+            <div id="timeline-track" class="timeline-track">
+                <span class="timeline-empty">Events will appear here when the process starts.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ EXPANDABLE PANELS ═══ -->
+    <div class="expandable-panels">
+
+        <!-- Error Lab -->
+        <button class="panel-toggle" data-panel="error-lab-content" onclick="app.togglePanel('error-lab-content')">
+            MEMORY PROBLEM LAB <span class="arrow">▶</span>
+        </button>
+        <div id="error-lab-content" class="panel-content">
+            <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:16px">
+                These demonstrations run in isolated child processes. They will not crash the main application.
+            </p>
+            <div class="error-lab">
+
+                <div class="error-card">
+                    <h4>Memory Leak</h4>
+                    <div class="description">The program creates memory but forgets to release it.</div>
+                    <div class="danger-note">In long-running programs, leaked memory accumulates and wastes system resources.</div>
+                    <button class="requires-engine danger" onclick="app.runDemo('leak')" disabled>RUN DEMONSTRATION</button>
+                    <div id="demo-result-leak" class="error-result" style="display:none"></div>
+                </div>
+
+                <div class="error-card">
+                    <h4>Use-After-Free</h4>
+                    <div class="description">The program tries to use memory after it has already released it.</div>
+                    <div class="danger-note">Can cause crashes, data corruption, or security vulnerabilities.</div>
+                    <button class="requires-engine danger" onclick="app.runDemo('use_after_free')" disabled>RUN DEMONSTRATION</button>
+                    <div id="demo-result-use_after_free" class="error-result" style="display:none"></div>
+                </div>
+
+                <div class="error-card">
+                    <h4>Double Free</h4>
+                    <div class="description">The program tries to release the same memory twice.</div>
+                    <div class="danger-note">Corrupts heap metadata and can lead to exploitable vulnerabilities.</div>
+                    <button class="requires-engine danger" onclick="app.runDemo('double_free')" disabled>RUN DEMONSTRATION</button>
+                    <div id="demo-result-double_free" class="error-result" style="display:none"></div>
+                </div>
+
+                <div class="error-card">
+                    <h4>Buffer Overflow</h4>
+                    <div class="description">The program tries to put more data into a memory area than it can safely hold.</div>
+                    <div class="danger-note">One of the most common and dangerous security vulnerabilities.</div>
+                    <button class="requires-engine danger" onclick="app.runDemo('buffer_overflow')" disabled>RUN DEMONSTRATION</button>
+                    <div id="demo-result-buffer_overflow" class="error-result" style="display:none"></div>
+                </div>
+
+                <div class="error-card">
+                    <h4>Dangling Pointer</h4>
+                    <div class="description">The program keeps a reference to memory that has already been released.</div>
+                    <div class="danger-note">Causes subtle, hard-to-find bugs because they may appear to work correctly.</div>
+                    <button class="requires-engine danger" onclick="app.runDemo('dangling_pointer')" disabled>RUN DEMONSTRATION</button>
+                    <div id="demo-result-dangling_pointer" class="error-result" style="display:none"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Valgrind -->
+        <button class="panel-toggle" data-panel="valgrind-panel-content" onclick="app.togglePanel('valgrind-panel-content')">
+            VALGRIND ANALYSIS <span class="arrow">▶</span>
+        </button>
+        <div id="valgrind-panel-content" class="panel-content">
+            <div id="valgrind-content">
+                <p style="color:var(--text-muted);font-style:italic">Click RUN VALGRIND to analyze a test program for memory issues.</p>
+            </div>
+        </div>
+
+        <!-- Allocation Table -->
+        <button class="panel-toggle" data-panel="alloc-table-content" onclick="app.togglePanel('alloc-table-content')">
+            ALLOCATION TABLE <span class="arrow">▶</span>
+        </button>
+        <div id="alloc-table-content" class="panel-content">
+            <table class="alloc-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Operation</th>
+                        <th>Size</th>
+                        <th>Status</th>
+                        <th>Address</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody id="alloc-table-body">
+                    <tr><td colspan="6" style="text-align:center;color:var(--text-muted);font-style:italic">No allocations</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- ═══ GUIDED EXPLANATION OVERLAY ═══ -->
+    <div id="guided-overlay" class="guided-overlay"></div>
+
+    <!-- ═══ VIDEO HIGHLIGHT & SPOTLIGHT OVERLAYS ═══ -->
+    <div id="video-highlight" class="video-highlight"></div>
+    <div id="video-spotlight" class="video-spotlight">
+        <div class="spotlight-tag" id="spotlight-tag">FOCUS</div>
+    </div>
+
+    <!-- ═══ EVENT DETAIL POPUP ═══ -->
+    <div id="event-detail" class="event-detail"></div>
+
+    <!-- ═══ CHAT PANEL (OLLAMA) ═══ -->
+    <div id="chat-panel" class="chat-panel">
+        <div class="chat-header">
+            <div>
+                <div class="chat-header-title">OFFLINE MEMORY ASSISTANT</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+                    <div class="chat-status" id="ollama-status">
+                        <span class="dot offline"></span> OFFLINE
+                    </div>
+                    <select id="chat-model-select" class="chat-model-select" onchange="app.switchModel(this.value)">
+                        <option value="">Loading models...</option>
+                    </select>
+                </div>
+            </div>
+            <button onclick="app.toggleChat()">CLOSE</button>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+            <div class="chat-message system">Ask anything about the memory demonstration. The assistant runs locally and does not send data to the internet.</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Type your question..."
+                   onkeydown="if(event.key==='Enter') app.sendChat()">
+            <button onclick="app.sendChat()">SEND</button>
+        </div>
+    </div>
+
+    <!-- ═══ SCRIPTS ═══ -->
+    <script src="explanations.js"></script>
+    <script src="app.js"></script>
+
+</body>
+</html>

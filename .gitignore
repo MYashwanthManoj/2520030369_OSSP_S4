@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Compiled C binaries and objects
+*.o
+*.out
+*.exe
+Project/c-engine/memory_engine
+Project/c-engine/valgrind_test
+c-engine/memory_engine
+c-engine/valgrind_test
+
+# Environment files
+.env
+
+# OS metadata
+.DS_Store
+Thumbs.db
